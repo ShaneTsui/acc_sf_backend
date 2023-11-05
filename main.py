@@ -18,20 +18,25 @@ report_database = {}
 textract = boto3.client("textract", region_name="us-west-2")
 
 
+def update_report(session_id: str, update_data: dict):
+    report_database[session_id] = report_database.get(session_id, {})
+    report_database[session_id].update(update_data)
+
 
 @app.get("/get_report/")
-async def get_report_endpoint():
-    return report_database
+async def get_report_endpoint(session_id: str):
+    return report_database.get(session_id, {})
 
 
 @app.post("/update_report/")
-async def update_report_endpoint(update_data: dict):
-    report_database.update(update_data)
+async def update_report_endpoint(update_data: dict, session_id: str):
+    update_report(session_id, update_data)
+    return report_database[session_id]
 
 
 @app.post("/analyze_driver_license/")
-async def analyze_driver_license(file: UploadFile):
-    if not file:
+async def analyze_driver_license(file: UploadFile, session_id: str):
+    if not file or not session_id:
         raise HTTPException(status_code=400, detail="No file found in the request")
 
     def process_file(file):
@@ -45,14 +50,14 @@ async def analyze_driver_license(file: UploadFile):
     result = process_file(file)
 
     if result is not None:
-        report_database.update(result)
-        return report_database
+        update_report(session_id, result)
+        return report_database[session_id]
     else:
         raise HTTPException(status_code=500, detail="Failed to process file")
 
 
 @app.post("/analyze_photo/")
-async def analyze_photo(file: UploadFile):
+async def analyze_photo(file: UploadFile, session_id: str):
     try:
         print("Start analyzing photo")
         contents = await file.read()
@@ -64,8 +69,8 @@ async def analyze_photo(file: UploadFile):
         lat, lon = extract_lat_lon(gps_info)
         update_data = get_geocode(lat, lon)
 
-        report_database.update(update_data)
-        return report_database
+        update_report(session_id, update_data)
+        return report_database[session_id]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
