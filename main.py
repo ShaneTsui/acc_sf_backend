@@ -1,57 +1,32 @@
+import io
+
+import aiofiles
 import boto3
 import uvicorn
-from fastapi import Depends, Request
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
 from fastapi import FastAPI, UploadFile, HTTPException
-from sqlalchemy.orm import Session
 
 from app.models.aws_identity_document_parser import IdentityDocParser
-from app.models.database import SessionLocal, Base, engine
-from app.models.report import Report
-from app.schemas import ReportUpdate
-
-from app.models.getAddress import getAddressFromDataUrl
+from utils.geo import extract_lat_lon, get_geocode
 
 app = FastAPI()
+
+report_database = {}
 
 # Amazon Textract client
 textract = boto3.client("textract", region_name="us-west-2")
 
-Base.metadata.create_all(bind=engine)
 
 
-def get_db():
-    db = SessionLocal()  # Replace with your actual database session maker
-    try:
-        yield db
-    finally:
-        db.close()
+@app.get("/get_report/")
+async def get_report_endpoint():
+    return report_database
 
 
 @app.post("/update_report/")
-async def update_report_endpoint(
-    request: Request, update_data: ReportUpdate, db: Session = Depends(get_db)
-):
-    # Extract session_id from the request header
-    session_id = request.headers.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="Session ID is required.")
-
-    # Fetch or create the report by session_id
-    report = db.query(Report).filter(Report.session_id == session_id).first()
-    if report:
-        # If the report exists, update it with the provided data
-        for var, value in vars(update_data).items():
-            setattr(report, var, value) if value is not None else None
-        db.commit()
-        return report
-    else:
-        # If the report does not exist, create a new one
-        new_report_data = update_data.model_dump(exclude_defaults=True)
-        new_report = Report(session_id=session_id, **new_report_data)
-        db.add(new_report)
-        db.commit()
-        db.refresh(new_report)
-        return new_report
+async def update_report_endpoint(update_data: dict):
+    report_database.update(update_data)
 
 
 @app.post("/analyze_driver_license/")
@@ -63,29 +38,49 @@ async def analyze_driver_license(file: UploadFile):
         try:
             contents = file.file.read()
             textract_result = textract.analyze_id(DocumentPages=[{"Bytes": contents}])
-            return file.filename, IdentityDocParser.parse(textract_result)
+            return IdentityDocParser.parse(textract_result)
         except Exception as e:
-            return file.filename, None
+            return None
 
     result = process_file(file)
 
     if result is not None:
-        return {"ocr_result": result}
+        report_database.update(result)
+        return report_database
     else:
-        raise HTTPException(status_code=400, detail="Failed to process file")
+        raise HTTPException(status_code=500, detail="Failed to process file")
 
 
-@app.post("/get_address/")
-def get_address(file: UploadFile):
-    if not file:
-        raise HTTPException(status_code=400, detail="No file found in the request")
+@app.post("/analyze_photo/")
+async def analyze_photo(file: UploadFile):
+    try:
+        print("Start analyzing photo")
+        contents = await file.read()
+        async with aiofiles.open(file.filename, "wb") as f:
+            await f.write(contents)
+        image = Image.open(io.BytesIO(contents))
+        exif_data = image._getexif()
+        gps_info = get_gps_info(exif_data)
+        lat, lon = extract_lat_lon(gps_info)
+        update_data = get_geocode(lat, lon)
 
-    result = getAddressFromDataUrl(file)
+        report_database.update(update_data)
+        return report_database
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await file.close()
 
-    if result is not None:
-        return {"address": result}
-    else:
-        raise HTTPException(status_code=400, detail="Failed to process file")
+
+def get_gps_info(exif_data):
+    gps_info = {}
+    for tag, value in exif_data.items():
+        decoded = TAGS.get(tag, tag)
+        if decoded == "GPSInfo":
+            for gps_tag in value:
+                sub_decoded = GPSTAGS.get(gps_tag, gps_tag)
+                gps_info[sub_decoded] = value[gps_tag]
+    return gps_info
 
 
 if __name__ == "__main__":
