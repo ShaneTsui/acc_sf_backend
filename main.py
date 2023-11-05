@@ -1,4 +1,5 @@
 import io
+import pickle
 
 import aiofiles
 import boto3
@@ -25,8 +26,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# {session_id: {}}
-report_database = {}
+DATABASE_FILE_PATH = "report_database.pkl"
+
+
+def load_db():
+    try:
+        with open(DATABASE_FILE_PATH, "rb") as db_file:
+            return pickle.load(db_file)
+    except (FileNotFoundError, EOFError):
+        with open(DATABASE_FILE_PATH, "wb") as db_file:
+            pickle.dump({}, db_file)
+        return {}
+
+
+def save_database(report_database):
+    with open(DATABASE_FILE_PATH, "wb") as db_file:
+        pickle.dump(report_database, db_file)
+
 
 # Amazon Textract client
 textract = boto3.client("textract", region_name="us-west-2")
@@ -34,12 +50,15 @@ textract = boto3.client("textract", region_name="us-west-2")
 
 @app.get("/get_report/")
 async def get_report_endpoint():
-    return report_database
+    return load_db()
 
 
 @app.post("/update_report/")
 async def update_report_endpoint(update_data: dict):
+    report_database = load_db()
     report_database.update(update_data)
+    save_database(report_database)
+    return report_database
 
 
 @app.post("/analyze_driver_license/")
@@ -58,7 +77,9 @@ async def analyze_driver_license(file: UploadFile):
     result = process_file(file)
 
     if result is not None:
+        report_database = load_db()
         report_database.update(result)
+        save_database(report_database)
         return report_database
     else:
         raise HTTPException(status_code=500, detail="Failed to process file")
@@ -77,7 +98,9 @@ async def analyze_photo(file: UploadFile):
         lat, lon = extract_lat_lon(gps_info)
         update_data = get_geocode(lat, lon)
 
+        report_database = load_db()
         report_database.update(update_data)
+        save_database(report_database)
         return report_database
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
