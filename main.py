@@ -1,4 +1,5 @@
 import io
+import logging
 import pickle
 
 import aiofiles
@@ -27,6 +28,8 @@ app.add_middleware(
 )
 
 DATABASE_FILE_PATH = "report_database.pkl"
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def load_db():
@@ -88,24 +91,35 @@ async def analyze_driver_license(file: UploadFile):
 @app.post("/analyze_photo/")
 async def analyze_photo(file: UploadFile):
     try:
-        print("Start analyzing photo")
+        logger.info("Received photo for analysis.")
         contents = await file.read()
+        logger.info(f"File read into memory: {file.filename}")
         async with aiofiles.open(file.filename, "wb") as f:
             await f.write(contents)
+        logger.info(f"File written to disk: {file.filename}")
         image = Image.open(io.BytesIO(contents))
+        logger.info("Image opened for EXIF data extraction.")
         exif_data = image._getexif()
+        logger.info("EXIF data extracted.")
         gps_info = get_gps_info(exif_data)
+        logger.info("GPS info extracted from EXIF data.")
         lat, lon = extract_lat_lon(gps_info)
+        logger.info(f"Latitude and Longitude extracted: {lat}, {lon}")
         update_data = get_geocode(lat, lon)
-
+        logger.info(f"Geocode information retrieved: {update_data}")
         report_database = load_db()
+        logger.info("Database loaded.")
         report_database.update(update_data)
+        logger.info("Database updated with new data.")
         save_database(report_database)
+        logger.info("Database saved.")
         return report_database
     except Exception as e:
+        logger.error(f"Error encountered: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await file.close()
+        logger.info(f"File {file.filename} closed.")
 
 
 def get_gps_info(exif_data):
