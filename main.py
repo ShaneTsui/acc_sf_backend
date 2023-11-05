@@ -9,10 +9,12 @@ from app.models.database import SessionLocal, Base, engine
 from app.models.report import Report
 from app.schemas import ReportUpdate
 
+from app.models.getAddress import getAddressFromDataUrl
+
 app = FastAPI()
 
 # Amazon Textract client
-textract = boto3.client("textract")
+textract = boto3.client("textract", region_name="us-west-2")
 
 Base.metadata.create_all(bind=engine)
 
@@ -69,6 +71,19 @@ async def analyze_driver_license(file: UploadFile):
 
     if result is not None:
         return {"ocr_result": result}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to process file")
+
+
+@app.post("/get_address/")
+def get_address(file: UploadFile):
+    if not file:
+        raise HTTPException(status_code=400, detail="No file found in the request")
+
+    result = getAddressFromDataUrl(file)
+
+    if result is not None:
+        return {"address": result}
     else:
         raise HTTPException(status_code=400, detail="Failed to process file")
 
