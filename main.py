@@ -6,17 +6,30 @@ import uvicorn
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from fastapi import FastAPI, UploadFile, HTTPException
+from starlette.middleware.cors import CORSMiddleware
 
 from app.models.aws_identity_document_parser import IdentityDocParser
 from utils.geo import extract_lat_lon, get_geocode
 
 app = FastAPI()
 
+# TODO: Change this to the actual frontend URL
+allow_origins = ["*"]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# {session_id: {}}
 report_database = {}
 
 # Amazon Textract client
 textract = boto3.client("textract", region_name="us-west-2")
-
 
 
 @app.get("/get_report/")
