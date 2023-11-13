@@ -31,7 +31,6 @@ def extract_fields(data):
 class IdentityDocParser:
     @staticmethod
     def parse(docs: dict) -> dict:
-        print(docs)
         return extract_fields(
             {
                 doc["DocumentIndex"]: AWSIdentityDocument(
