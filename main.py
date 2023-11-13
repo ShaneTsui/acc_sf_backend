@@ -51,6 +51,11 @@ def save_database(report_database):
 textract = boto3.client("textract", region_name="us-west-2")
 
 
+@app.get("/hello")
+async def hello():
+    return "Hello SnapReport!"
+
+
 @app.get("/get_report/")
 async def get_report_endpoint():
     return load_db()
