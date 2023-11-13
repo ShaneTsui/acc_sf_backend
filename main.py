@@ -1,3 +1,4 @@
+import base64
 import io
 import logging
 import pickle
@@ -7,6 +8,7 @@ import boto3
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from fastapi import FastAPI, UploadFile, HTTPException
+from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 from app.models.aws_identity_document_parser import IdentityDocParser
@@ -92,17 +94,24 @@ async def analyze_driver_license(file: UploadFile):
         raise HTTPException(status_code=500, detail="Failed to process file")
 
 
+class ImageData(BaseModel):
+    image_base64: str
+
+
 @app.post("/analyze_photo/")
-async def analyze_photo(file: UploadFile):
+async def analyze_photo(data: ImageData):
     try:
         logger.info("Received photo for analysis.")
-        contents = await file.read()
-        logger.info(f"File read into memory: {file.filename}")
-        async with aiofiles.open(file.filename, "wb") as f:
+        contents = base64.b64decode(data.image_base64)
+        file_name = "temp_image.jpg"  # Temporary file name
+
+        async with aiofiles.open(file_name, "wb") as f:
             await f.write(contents)
-        logger.info(f"File written to disk: {file.filename}")
+        logger.info(f"File written to disk: {file_name}")
+
         image = Image.open(io.BytesIO(contents))
         logger.info("Image opened for EXIF data extraction.")
+
         exif_data = image._getexif()
         logger.info("EXIF data extracted.")
         gps_info = get_gps_info(exif_data)
@@ -121,9 +130,6 @@ async def analyze_photo(file: UploadFile):
     except Exception as e:
         logger.error(f"Error encountered: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        await file.close()
-        logger.info(f"File {file.filename} closed.")
 
 
 def get_gps_info(exif_data):
