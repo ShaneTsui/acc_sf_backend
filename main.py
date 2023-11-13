@@ -4,7 +4,6 @@ import pickle
 
 import aiofiles
 import boto3
-import uvicorn
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from fastapi import FastAPI, UploadFile, HTTPException
@@ -28,7 +27,7 @@ app.add_middleware(
 )
 
 DATABASE_FILE_PATH = "report_database.pkl"
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -136,7 +135,3 @@ def get_gps_info(exif_data):
                 sub_decoded = GPSTAGS.get(gps_tag, gps_tag)
                 gps_info[sub_decoded] = value[gps_tag]
     return gps_info
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
