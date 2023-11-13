@@ -1,6 +1,6 @@
-import requests
+import os
 
-GOOGLE_MAP_API_KEY = "AIzaSyC7EMJ8Bl774JFCG-rlMYaN1CheqaXIGaA"
+import requests
 
 
 def create_address_dict(address_components):
@@ -31,7 +31,7 @@ def create_address_dict(address_components):
 
 
 def get_geocode(lat, long):
-    url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{long}&key={GOOGLE_MAP_API_KEY}"
+    url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{long}&key={os.environ['GOOGLE_MAP_API_KEY']}"
     response = requests.get(url)
     if response.ok:
         return create_address_dict(response.json()["results"][0]["address_components"])
